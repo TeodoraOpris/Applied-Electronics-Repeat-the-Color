@@ -1,0 +1,177 @@
+#include <vector>
+#include <LiquidCrystal.h>
+
+// PINS
+enum { rs = 0, en, d4, d5, d6, d7 };
+enum { b1 = 10, b2, b3, b4 };
+int led = 8;
+int sw = 7;
+
+LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
+
+std::vector<int> i_Seq;
+
+// VARS
+int g_StartTime = 0;
+int g_NoPins = 4;
+int g_InputCount = 0;
+int g_Score = 0;
+int i_ExpRd;
+int p_LastBtn;
+int d_WaitTime = 5000;
+int d_SeqDelay = 1000;
+
+// FLAGS
+bool f_Wait = false;
+bool f_Press = false;
+bool f_Reset = false;
+
+void SetPinDirection(byte dir)
+{
+  for(int i = 0; i < g_NoPins; i++)
+  {
+    pinMode(b1 + i, dir);
+  }
+}
+
+void WriteAllPins(int val)
+{
+  //SetPinDirection(OUTPUT);
+  for(int i = 0; i < g_NoPins; i++)
+  {
+    digitalWrite(b1 + i, val);
+  }
+}
+
+void Flash(int halfPeriod)
+{
+  SetPinDirection(OUTPUT);
+  for(int i = 0; i < 5; i++)
+  {
+    WriteAllPins(LOW);
+    digitalWrite(led, HIGH);
+    delay(halfPeriod);
+    WriteAllPins(HIGH);
+    digitalWrite(led, LOW);
+    delay(halfPeriod);
+  }
+}
+
+void PlaySequence()
+{
+  //SetPinDirection(OUTPUT);
+  WriteAllPins(HIGH);
+  for(int i=0; i < i_Seq.size(); i++)
+  {
+    digitalWrite(b1 + i_Seq[i], LOW);
+    delay(d_SeqDelay);
+    digitalWrite(b1 + i_Seq[i], HIGH);
+    delay(d_SeqDelay/10);
+  }
+}
+  
+void ResetFunc()
+{
+  if(digitalRead(sw) == HIGH)
+  {
+    d_WaitTime = 2000;
+    d_SeqDelay = 500;
+  }
+  else
+  {
+    d_WaitTime = 5000;
+    d_SeqDelay = 1000;
+  }
+
+  Flash(100);
+  g_Score = 0;
+  f_Reset = 0;
+  i_Seq.clear();
+  lcd.clear();
+  lcd.print(„Score:”);
+  lcd.setCursor(0, 1);
+  f_Wait = false;
+  delay(100);
+}
+
+void setup()
+{
+  pinMode(led, OUTPUT);
+  lcd.begin(16, 2);
+  Serial.begin(9600);
+  randomSeed(millis());
+  ResetFunc();
+  
+  Serial.println(„SETUP COMPLETE, STARTING...”);
+}
+
+void loop()
+{
+  //print score
+  lcd.setCursor(0, 1);
+  lcd.print(g_Score);
+
+  if(!f_Wait)
+  {
+    i_Seq.push_back(random(g_NoPins));
+    PlaySequence();
+    g_InputCount = 0;
+    g_StartTime = millis();
+    f_Reset = false;
+    f_Press = false;
+    f_Wait = true;
+  }
+  else if(millis() – g_StartTime <= d_WaitTime)
+  {
+    SetPinDirection(INPUT_PULLUP);
+    i_ExpRd = i_Seq[g_InputCount];
+    if(!f_Press)
+  {
+    for(int i=0; i < g_NoPins; i++)
+    {
+      if (b1+i_ExpRd == b1+i) continue;
+      if (digitalRead(b1+i) == LOW)
+      {
+        f_Press = true;
+        p_LastBtn = b1+i;
+        Serial.println(„RECEIVED WRONG INPUT:”);
+        Serial.println(b1+i);
+        Serial.println(„YOU LOSE”);
+        f_Reset = true;
+      }
+    }
+  }
+  if(!f_Press && digitalRead(b1+i_ExpRd) == LOW)
+  {
+    g_StartTime = millis();
+    g_InputCount++;
+    p_LastBtn = b1+i_ExpRd;
+    f_Press = true;
+    Serial.println(„Correct button press:”);
+    Serial.println(p_LastBtn);
+    //CORRECT
+  }
+  else if(f_Press && digitalRead(p_LastBtn)==HIGH)
+  {
+    f_Press = false;
+    if(f_Reset) 
+    {
+      ResetFunc();
+    }
+  }
+  else if(g_InputCount == i_Seq.size())
+  {
+    g_Score += g_InputCount;
+    Serial.println(„End of sequence, next round...”);
+    g_InputCount = 0;
+    f_Wait = false;
+    Flash(200);
+    delay(500);
+  }
+}
+else
+{
+  Serial.println(„TIME OUT, YOU LOSE”);
+  ResetFunc();
+}
+}
